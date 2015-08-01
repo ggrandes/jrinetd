@@ -1,0 +1,68 @@
+<assembly
+	xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.2"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.2 
+  http://maven.apache.org/xsd/assembly-1.1.2.xsd">
+
+	<id>bin</id>
+	<formats>
+		<format>zip</format>
+	</formats>
+	<includeBaseDirectory>false</includeBaseDirectory>
+	<fileSets>
+		<!-- Directories -->
+		<fileSet>
+			<directory>${project.basedir}/assembly/empty/</directory>
+			<outputDirectory>/bin/</outputDirectory>
+			<directoryMode>0755</directoryMode>
+		</fileSet>
+		<fileSet>
+			<directory>${project.basedir}/assembly/empty/</directory>
+			<outputDirectory>/lib/</outputDirectory>
+			<directoryMode>0755</directoryMode>
+		</fileSet>
+		<fileSet>
+			<directory>${project.basedir}/assembly/empty/</directory>
+			<outputDirectory>/conf/</outputDirectory>
+			<directoryMode>0770</directoryMode>
+		</fileSet>
+		<fileSet>
+			<directory>${project.basedir}/assembly/empty/</directory>
+			<outputDirectory>/log/</outputDirectory>
+			<directoryMode>0775</directoryMode>
+		</fileSet>
+		<!-- Directories / Files -->
+		<fileSet>
+			<directory>${project.basedir}/sampleconf/</directory>
+			<outputDirectory>/sampleconf/</outputDirectory>
+			<directoryMode>0770</directoryMode>
+			<fileMode>0660</fileMode>
+		</fileSet>
+		<!-- Files -->
+		<fileSet>
+			<directory>${project.basedir}/linux/</directory>
+			<outputDirectory>/bin/</outputDirectory>
+			<includes>
+				<include>jrinetd.sh</include>
+			</includes>
+			<fileMode>0755</fileMode>
+		</fileSet>
+		<fileSet>
+			<directory>${project.basedir}/</directory>
+			<outputDirectory>/</outputDirectory>
+			<includes>
+				<include>LICENSE</include>
+			</includes>
+			<fileMode>0644</fileMode>
+		</fileSet>
+	</fileSets>
+	<dependencySets>
+		<dependencySet>
+			<fileMode>0644</fileMode>
+			<outputDirectory>/lib/</outputDirectory>
+			<useProjectArtifact>true</useProjectArtifact>
+			<unpack>false</unpack>
+			<scope>runtime</scope>
+		</dependencySet>
+	</dependencySets>
+</assembly>
