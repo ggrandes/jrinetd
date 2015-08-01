@@ -1,0 +1,6 @@
+bin
+.metadata
+.settings
+target
+src/main/resources/*.properties
+src/main/resources/jrinetd.conf
