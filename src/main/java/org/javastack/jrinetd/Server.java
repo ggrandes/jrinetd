@@ -19,8 +19,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -38,7 +36,6 @@ import org.javastack.jrinetd.LoadBalanceStrategy.RoundRobinStrategy;
  * @author Guillermo Grandes / guillermo.grandes[at]gmail.com
  */
 public class Server implements Runnable {
-	private static final ExecutorService threadPool = Executors.newCachedThreadPool();
 	private static final AtomicInteger runningServers = new AtomicInteger(0);
 	private static final AtomicInteger idSeq = new AtomicInteger();
 	private static final GenericPoolFactory<ByteBuffer> byteBufferFactory = new GenericPoolFactory<ByteBuffer>() {
@@ -61,11 +58,13 @@ public class Server implements Runnable {
 	private final CopyOnWriteArrayList<ServerEventHandler> handlers = new CopyOnWriteArrayList<ServerEventHandler>();
 	private final AtomicInteger handler = new AtomicInteger(0);
 
+	private final ThreadPool tp;
 	private final Listener listener;
 	private long started = 0;
 
-	public Server(final Listeners listeners, final String listenAddress, final String remoteAddress,
+	public Server(final ThreadPool tp, final Listeners listeners, final String listenAddress, final String remoteAddress,
 			final Options opts, final GlobalEventHandler events) throws IOException {
+		this.tp = tp;
 		this.listenAddress = IOHelper.parseAddress(listenAddress);
 		this.remoteAddress = new Endpoint(remoteAddress, getLoadBalanceStrategy(opts));
 		this.opts = opts;
@@ -77,7 +76,7 @@ public class Server implements Runnable {
 			throw e;
 		}
 	}
-	
+
 	public static StickyStoreFactory<InetAddress, InetSocketAddress> getStickyFactory() {
 		return stickyFactory;
 	}
@@ -88,10 +87,6 @@ public class Server implements Runnable {
 
 	public static int getId() {
 		return idSeq.incrementAndGet();
-	}
-
-	public static void newTask(final Runnable r) {
-		threadPool.submit(r);
 	}
 
 	public String getName() {
@@ -175,7 +170,7 @@ public class Server implements Runnable {
 			for (int i = 0; i < listener.clientSelectors(); i++) {
 				final ServerEventHandler handler = new ServerEventHandler(this, listener.get(i));
 				handlers.add(handler);
-				newTask(handler);
+				tp.newTask(handler);
 			}
 			Thread.currentThread().setName(
 					"srv-" + Server.getId() + "-" + IOHelper.inetAddrToHoman(getListenAddress()));

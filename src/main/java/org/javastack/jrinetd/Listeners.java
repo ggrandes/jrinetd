@@ -38,7 +38,7 @@ public class Listeners {
 	public synchronized void closeReleased() {
 		for (final Entry<InetSocketAddress, Listener> e : listeners.entrySet()) {
 			if (e.getValue().isReleased()) {
-				Log.info(Listeners.class.getName(), "Closing: " + IOHelper.inetAddrToHoman(e.getKey()));
+				Log.info(Listeners.class.getSimpleName(), "Closing: " + IOHelper.inetAddrToHoman(e.getKey()));
 				IOHelper.closeSilent(e.getValue());
 			}
 		}

@@ -22,12 +22,12 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.net.URLConnection;
-import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.javastack.jrinetd.BIOConnection.Connection;
 import org.javastack.jrinetd.Cluster.ClusterServer;
@@ -40,9 +40,19 @@ import org.javastack.jrinetd.StickyStore.StickyEntry;
  * @author Guillermo Grandes / guillermo.grandes[at]gmail.com
  */
 public class Jrinetd implements GlobalEventHandler {
+	private final String configName;
 	private final Set<Server> srvs = new LinkedHashSet<Server>();
 	private final int id = Server.getId();
 	private final Listeners listeners = new Listeners();
+	private final AtomicBoolean run = new AtomicBoolean();
+
+	private Thread shutThread = null;
+	private ThreadPool tp = null;
+	private long lastReloaded = 0;
+
+	public Jrinetd(final String configName) {
+		this.configName = configName;
+	}
 
 	// ============================== Global code
 
@@ -51,8 +61,16 @@ public class Jrinetd implements GlobalEventHandler {
 			System.out.println(Jrinetd.class.getName() + " <configName>");
 			return;
 		}
-		final String configFile = args[0];
-		final Jrinetd jrinetd = new Jrinetd();
+		final String configName = args[0];
+		final Jrinetd jrinetd = new Jrinetd(configName);
+		jrinetd.initLog();
+		jrinetd.addShutdownHook();
+		jrinetd.start();
+		// Thread.sleep(5000);
+		// jrinetd.stop();
+	}
+
+	public void initLog() {
 		//
 		// Init Log System
 		if (Boolean.getBoolean("DEBUG")) {
@@ -71,48 +89,116 @@ public class Jrinetd implements GlobalEventHandler {
 				Log.setMode(Log.LOG_CURR_STDOUT);
 			}
 		}
-		Log.info(Jrinetd.class.getSimpleName(), "Starting " + jrinetd.getClass() + " version " + getVersion()
-				+ (Log.isDebugEnabled() ? " debug-mode" : ""));
-		// Read config
-		final URL urlConfig = jrinetd.getClass().getResource("/" + configFile);
-		if (urlConfig == null) {
-			Log.error(Jrinetd.class.getSimpleName(), "Config not found: (classpath) " + configFile);
-			return;
-		}
-		jrinetd.startCacheResolver();
-		long lastReloaded = 0;
-		while (true) {
-			InputStream isConfig = null;
-			try {
-				final URLConnection connConfig = urlConfig.openConnection();
-				connConfig.setUseCaches(false);
-				final long lastModified = connConfig.getLastModified();
-				// if (Log.isDebugEnabled()) {
-				// Log.debug(Jrinetd.class.getSimpleName(), "lastReloaded=" + lastReloaded
-				// + " getLastModified()=" + connConfig.getLastModified() + " currentTimeMillis()="
-				// + System.currentTimeMillis());
-				// }
-				isConfig = connConfig.getInputStream();
-				if (lastModified > lastReloaded) {
-					if (lastReloaded > 0) {
-						Log.info(Jrinetd.class.getSimpleName(), "Reloading config");
-					}
-					lastReloaded = lastModified;
-					jrinetd.stopClusters();
-					jrinetd.releaseStickies();
-					jrinetd.stopServers();
-					jrinetd.reload(isConfig);
-					jrinetd.cleanOrphanListeners();
-					jrinetd.cleanOrphanStickies();
-					Log.info(Jrinetd.class.getSimpleName(), "Reloaded config");
-				}
-			} catch (Exception e) {
-				Log.error(Jrinetd.class.getSimpleName(), "Load config error", e);
-			} finally {
-				IOHelper.closeSilent(isConfig);
+	}
+
+	public void addShutdownHook() {
+		removeShutdownHook();
+		final Jrinetd jrinetd = this;
+		shutThread = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				shutThread = null;
+				jrinetd.stop();
 			}
-			doSleep(Constants.RELOAD_CONFIG);
+		});
+		shutThread.setName("ShutdownHook-" + jrinetd.getClass().getSimpleName());
+		Runtime.getRuntime().addShutdownHook(shutThread);
+	}
+
+	public void removeShutdownHook() {
+		if (shutThread != null) {
+			Runtime.getRuntime().removeShutdownHook(shutThread);
+			shutThread = null;
 		}
+	}
+
+	public void start() {
+		if (!run.compareAndSet(false, true)) {
+			throw new IllegalStateException("Already started");
+		}
+		Log.info(getClass().getSimpleName(),
+				"Starting " + getClass() + " version " + getVersion()
+						+ (Log.isDebugEnabled() ? " debug-mode" : ""));
+		tp = new ThreadPool();
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				Thread.currentThread().setName("ConfigWatcher");
+				// Read config
+				final URL urlConfig = getClass().getResource("/" + configName);
+				if (urlConfig == null) {
+					Log.error(getClass().getSimpleName(), "Config not found: (classpath) " + configName);
+					return;
+				}
+				startCacheResolver();
+				try {
+					while (run.get()) {
+						try {
+							load0(urlConfig);
+						} catch (Exception e) {
+							Log.error(Jrinetd.class.getSimpleName(), "Load config error", e);
+						}
+						doSleep(Constants.RELOAD_CONFIG);
+					}
+				} finally {
+					stop0();
+					clean0();
+					tp.destroy();
+				}
+			}
+		}).start();
+	}
+
+	public void stop() {
+		Log.info(getClass().getSimpleName(), "Stoping " + getClass());
+		run.set(false);
+		synchronized (this) {
+			this.notifyAll();
+		}
+		Log.info(getClass().getSimpleName(), "Waiting " + getClass());
+		int c = 3;
+		while (!tp.isTerminated() && (--c > 0)) {
+			doSleep(1000);
+		}
+		removeShutdownHook();
+		Log.info(getClass().getSimpleName(), "Stoped " + getClass());
+	}
+
+	void load0(final URL urlConfig) throws InterruptedException, IOException {
+		InputStream isConfig = null;
+		try {
+			final URLConnection connConfig = urlConfig.openConnection();
+			connConfig.setUseCaches(false);
+			final long lastModified = connConfig.getLastModified();
+			if (Log.isDebugEnabled()) {
+				Log.debug(getClass().getSimpleName(), "lastReloaded=" + lastReloaded + " getLastModified()="
+						+ connConfig.getLastModified() + " currentTimeMillis()=" + System.currentTimeMillis());
+			}
+			isConfig = connConfig.getInputStream();
+			if (lastModified > lastReloaded) {
+				if (lastReloaded > 0) {
+					Log.info(getClass().getSimpleName(), "Reloading config");
+				}
+				lastReloaded = lastModified;
+				stop0();
+				reload(isConfig);
+				clean0();
+				Log.info(Jrinetd.class.getSimpleName(), "Reloaded config");
+			}
+		} finally {
+			IOHelper.closeSilent(isConfig);
+		}
+	}
+
+	void stop0() {
+		stopClusters();
+		releaseStickies();
+		stopServers();
+	}
+
+	void clean0() {
+		cleanOrphanListeners();
+		cleanOrphanStickies();
 	}
 
 	static String getVersion() {
@@ -132,9 +218,11 @@ public class Jrinetd implements GlobalEventHandler {
 		}
 	}
 
-	static void doSleep(final long time) {
+	void doSleep(final long time) {
 		try {
-			Thread.sleep(time);
+			synchronized (this) {
+				this.wait(time);
+			}
 		} catch (InterruptedException ie) {
 			Thread.currentThread().interrupt();
 		}
@@ -144,7 +232,7 @@ public class Jrinetd implements GlobalEventHandler {
 		return Integer.toHexString(id | Integer.MIN_VALUE);
 	}
 
-	void reload(final InputStream isConfig) throws NoSuchAlgorithmException, IOException {
+	void reload(final InputStream isConfig) throws IOException {
 		final BufferedReader in = new BufferedReader(new InputStreamReader(isConfig));
 		String line = null;
 		int lineNum = 0;
@@ -207,9 +295,9 @@ public class Jrinetd implements GlobalEventHandler {
 		//
 		Log.info(getName(), "Readed bind-addr=" + listenAddress + " remote-addr=" + remoteAddress
 				+ " options{" + opts + "}");
-		final Server srv = new Server(listeners, listenAddress, remoteAddress, opts, this);
+		final Server srv = new Server(tp, listeners, listenAddress, remoteAddress, opts, this);
 		srvs.add(srv);
-		Server.newTask(srv);
+		tp.newTask(srv);
 		return true;
 	}
 
@@ -232,7 +320,7 @@ public class Jrinetd implements GlobalEventHandler {
 		Server.getStickyFactory().unregisterReleased();
 	}
 
-	void stopClusters() throws InterruptedException {
+	void stopClusters() {
 		final long shutdownInit = System.currentTimeMillis();
 		int running = 0;
 		if ((running = Cluster.getRunningInstances()) > 0) {
@@ -243,7 +331,7 @@ public class Jrinetd implements GlobalEventHandler {
 					Log.error(getName(), "Shutdown Error: running clusters=" + running);
 					break;
 				}
-				Thread.sleep(100);
+				doSleep(100);
 			}
 			if (running <= 0) {
 				Log.info(getName(), "Shutdown completed: running clusters=" + running);
@@ -251,7 +339,7 @@ public class Jrinetd implements GlobalEventHandler {
 		}
 	}
 
-	void stopServers() throws InterruptedException {
+	void stopServers() {
 		if (!srvs.isEmpty()) {
 			final Iterator<Server> i = srvs.iterator();
 			while (i.hasNext()) {
@@ -268,7 +356,7 @@ public class Jrinetd implements GlobalEventHandler {
 					Log.error(getName(), "Shutdown Error: running servers=" + running);
 					break;
 				}
-				Thread.sleep(100);
+				doSleep(100);
 			}
 			if (running <= 0) {
 				Log.info(getName(), "Shutdown completed: running servers=" + running);
@@ -346,7 +434,7 @@ public class Jrinetd implements GlobalEventHandler {
 	}
 
 	void startCacheResolver() {
-		Server.newTask(new Runnable() {
+		tp.newTask(new Runnable() {
 			private final int id = Server.getId();
 
 			private String getName() {
@@ -357,7 +445,7 @@ public class Jrinetd implements GlobalEventHandler {
 			public void run() {
 				try {
 					Thread.currentThread().setName("CacheResolver");
-					while (!Thread.currentThread().isInterrupted()) {
+					while (run.get()) {
 						for (final Server s : srvs) {
 							final Endpoint addr = s.getEndPoint();
 							if (addr.isUsed() || addr.isExpired()) {
@@ -366,6 +454,8 @@ public class Jrinetd implements GlobalEventHandler {
 						}
 						Thread.sleep(Constants.DNS_CACHE_TIME);
 					}
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
 				} catch (Exception e) {
 					Log.error(getName(), "Exception in CacheResolver", e);
 				} finally {

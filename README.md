@@ -2,7 +2,7 @@
 
 jrinetd is an open source (Apache License, Version 2.0) Java TCP port redirector proxy. Do not require any external lib.
 
-### Current Stable Version is [1.0.0](https://maven-release.s3.amazonaws.com/release/org/javastack/jrinetd/1.0.0/jrinetd-1.0.0-bin.zip)
+### Current Stable Version is [1.1.0](https://maven-release.s3.amazonaws.com/release/org/javastack/jrinetd/1.1.0/jrinetd-1.1.0-bin.zip)
 
 ---
 
@@ -99,6 +99,7 @@ Config file must be in class-path `${JRINETD_HOME}/conf/`, general format is:
 * Sticky sessions in LoadBalancing (v1.0.0)
 * Use multiple thread for multi-core machines (v1.0.0)
 * Replicate Sticky Sessions over multiple jrinetd (HA) (v1.0.0)
+* Improved support for embed -a little- (v1.1.0)
 
 ## MISC
 

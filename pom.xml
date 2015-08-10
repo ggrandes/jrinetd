@@ -4,7 +4,7 @@
 
 	<groupId>org.javastack</groupId>
 	<artifactId>jrinetd</artifactId>
-	<version>1.0.0</version>
+	<version>1.1.0</version>
 	<description>jrinetd is a redirector / forward proxy (like rinetd) with extra features like connection Failover, LoadBalancing and Clustering.</description>
 
 	<name>${project.groupId}:${project.artifactId}</name>

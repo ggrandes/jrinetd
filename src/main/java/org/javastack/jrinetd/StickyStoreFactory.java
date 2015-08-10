@@ -78,7 +78,7 @@ public class StickyStoreFactory<K extends InetAddress, V extends InetSocketAddre
 		final ArrayList<StickyKey> free = new ArrayList<StickyKey>();
 		for (final Entry<StickyKey, StickyStore<K, V>> e : instances.entrySet()) {
 			if (e.getValue().isReleased()) {
-				Log.info(Listeners.class.getName(), "Unregistering: " + e.getValue().getConfig());
+				Log.info(Listeners.class.getSimpleName(), "Unregistering: " + e.getValue().getConfig());
 				free.add(e.getKey());
 			}
 		}
