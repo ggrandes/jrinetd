@@ -12,7 +12,7 @@ import org.javastack.jrinetd.LoadBalanceStrategy.LoadBalanceContext;
 public class Endpoint {
 	private static final DNSCache cache = new DNSCache();
 
-	private final EndpointAddress[] addresses;
+	private volatile EndpointAddress[] addresses;
 	private final LoadBalanceStrategy<InetAddress, InetSocketAddress> loadBalancing;
 	private boolean used = false;
 	private long expire = 0;
@@ -33,7 +33,13 @@ public class Endpoint {
 		return (System.currentTimeMillis() > expire);
 	}
 
+	public synchronized void setAddress(final String address) {
+		this.addresses = EndpointAddress.valueOf(address);
+		this.expire = 0;
+	}
+
 	public void resolve() throws UnknownHostException {
+		final EndpointAddress[] addresses = this.addresses;
 		final ArrayList<InetSocketAddress> inetAddr = new ArrayList<InetSocketAddress>(addresses.length);
 		for (int i = 0; i < addresses.length; i++) {
 			final List<InetAddress> la = cache.getAddressList(addresses[i].host);
