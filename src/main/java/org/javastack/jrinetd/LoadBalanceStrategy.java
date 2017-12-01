@@ -109,15 +109,24 @@ public abstract class LoadBalanceStrategy<K extends InetAddress, V extends InetS
 		}
 
 		@Override
+		public LoadBalanceContext<K, V> createContext(final K stickyAddr) {
+			return super.createContext(stickyAddr).set(address.iterator());
+		}
+
+		@Override
 		public V onConnect(final LoadBalanceContext<K, V> ctx) {
+			final V sticky = super.onConnect(ctx);
+			if (sticky != null) {
+				return sticky;
+			}
 			if (address.isEmpty())
 				return null;
-			return address.get(0);
+			return ctx.nextAndSet();
 		}
 
 		@Override
 		public boolean canRetry(final LoadBalanceContext<K, V> ctx) {
-			return false;
+			return (super.canRetry(ctx) && ctx.hasNext());
 		}
 	}
 
