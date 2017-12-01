@@ -2,7 +2,7 @@
 
 jrinetd is an open source (Apache License, Version 2.0) Java TCP port redirector proxy. Do not require any external lib.
 
-### Current Stable Version is [1.1.1](https://maven-release.s3.amazonaws.com/release/org/javastack/jrinetd/1.1.1/jrinetd-1.1.1-bin.zip)
+### Current Stable Version is [1.1.2](https://maven-release.s3.amazonaws.com/release/org/javastack/jrinetd/1.1.2/jrinetd-1.1.2-bin.zip)
 
 ---
 
